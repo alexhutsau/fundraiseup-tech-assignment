@@ -10,6 +10,9 @@ yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
 
+# TypeScript cache
+*.tsbuildinfo
+
 # OS
 .DS_Store
 
