@@ -7,7 +7,7 @@
     "format": "prettier --write \"**/*.ts\"",
     "start:app": "npm run build && node dist/app.js",
     "start:sync": "npm run build && node dist/sync.js",
-    "start:fsync": "npm run build && node dist/sync.js --full_reindex"
+    "start:fsync": "npm run build && node dist/sync.js --full-reindex"
   },
   "keywords": [],
   "author": "",
@@ -20,6 +20,7 @@
   "dependencies": {
     "@faker-js/faker": "^8.0.2",
     "dotenv": "^16.3.1",
+    "hashids": "^2.3.0",
     "mongodb": "^5.7.0"
   }
 }

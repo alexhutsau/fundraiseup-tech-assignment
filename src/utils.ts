@@ -1,5 +1,7 @@
 import { faker } from "@faker-js/faker";
 import { Customer } from "./interfaces";
+import { WithId } from "mongodb";
+import Hashids from "hashids";
 
 function randomInt(max: number, min = 0) {
   const minInt = Math.ceil(min);
@@ -33,4 +35,33 @@ export function createRandomCustomers(): Customer[] {
   return faker.helpers.multiple(createRandomCustomer, {
     count: randomIntInclusive(10, 1),
   });
+}
+
+function anonymiseString(value: string): string {
+  return new Hashids(value, 8).encode(1);
+}
+
+function anonymiseEmail(email: string): string {
+  const atSignIndex = email.indexOf("@");
+  return `${anonymiseString(email.slice(0, atSignIndex))}@${email.slice(
+    atSignIndex + 1,
+  )}`;
+}
+
+export function anonymiseCustomer({
+  address,
+  ...customer
+}: WithId<Customer>): WithId<Customer> {
+  return {
+    ...customer,
+    firstName: anonymiseString(customer.firstName),
+    lastName: anonymiseString(customer.lastName),
+    email: anonymiseEmail(customer.email),
+    address: {
+      ...address,
+      line1: anonymiseString(address.line1),
+      line2: anonymiseString(address.line2),
+      postcode: anonymiseString(address.postcode),
+    },
+  };
 }
