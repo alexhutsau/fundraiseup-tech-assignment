@@ -2,7 +2,7 @@ import "dotenv/config";
 
 import { initConnection, mongoClient } from "./db";
 import { anonymiseCustomer } from "./utils";
-import { ChangeStreamInsertDocument, Timestamp, WithId } from "mongodb";
+import { ChangeStreamInsertDocument, WithId } from "mongodb";
 import { Customer } from "./interfaces";
 
 const isFullReindexMode = process.argv.includes("--full-reindex");
@@ -13,10 +13,15 @@ async function saveAnonymisedCustomers(
   await mongoClient
     .db("fundraiseup")
     .collection("customers_anonymised")
-    .insertMany(customers, { ordered: false })
-    .catch((error) => {
-      if (error.code !== 11000) throw error;
-    });
+    .bulkWrite(
+      customers.map((customer) => ({
+        replaceOne: {
+          filter: { _id: customer._id },
+          upsert: true,
+          replacement: customer,
+        },
+      })),
+    );
 }
 
 async function runFullReindex(): Promise<void> {
@@ -49,34 +54,44 @@ async function runFullReindex(): Promise<void> {
     process.exit();
   }
 
-  const [lastAnonymised] = await mongoClient
-    .db("fundraiseup")
-    .collection<Customer>("customers_anonymised")
-    .find()
-    .sort("_id", -1)
+  const [lastAnonymisedCustomerEvent] = await mongoClient
+    .db("local")
+    .collection("oplog.rs")
+    .find({ ns: "fundraiseup.customers_anonymised" })
+    .sort("ts", -1)
     .limit(1)
     .toArray();
 
-  const firstCreated =
-    !lastAnonymised &&
-    (await mongoClient
-      .db("fundraiseup")
-      .collection<Customer>("customers")
-      .findOne());
+  const [lastSavedCustomerEvent] = await (lastAnonymisedCustomerEvent
+    ? mongoClient
+        .db("local")
+        .collection("oplog.rs")
+        .find({
+          ns: "fundraiseup.customers",
+          o2: lastAnonymisedCustomerEvent.o2,
+          ts: { $lt: lastAnonymisedCustomerEvent.ts },
+        })
+        .sort("ts", -1)
+    : mongoClient
+        .db("local")
+        .collection("oplog.rs")
+        .find({ ns: "fundraiseup.customers" })
+  )
+    .limit(1)
+    .toArray();
 
-  const startAtOperationTime = (lastAnonymised || firstCreated)?.createdAt;
-
-  const watchStream = mongoClient
+  const changeStream = mongoClient
     .db("fundraiseup")
     .collection("customers")
-    .watch([{ $match: { operationType: "insert" } }], {
-      ...(startAtOperationTime && {
-        startAtOperationTime: new Timestamp({
-          t: Math.floor(+startAtOperationTime / 1000),
-          i: 1,
+    .watch(
+      [{ $match: { operationType: { $in: ["insert", "update", "replace"] } } }],
+      {
+        fullDocument: "updateLookup",
+        ...(lastSavedCustomerEvent && {
+          startAtOperationTime: lastSavedCustomerEvent.ts,
         }),
-      }),
-    });
+      },
+    );
 
   const anonymisedCustomers: WithId<Customer>[] = [];
 
@@ -89,13 +104,12 @@ async function runFullReindex(): Promise<void> {
     }
   }, 1000);
 
-  console.log(`start from ${startAtOperationTime}`);
+  console.log(`start from ${lastSavedCustomerEvent?.wall}`);
 
-  while (true) {
-    const { fullDocument: customer } =
-      (await watchStream.next()) as ChangeStreamInsertDocument<
-        WithId<Customer>
-      >;
+  for await (const change of changeStream) {
+    const { fullDocument: customer } = change as ChangeStreamInsertDocument<
+      WithId<Customer>
+    >;
 
     const len = anonymisedCustomers.push(anonymiseCustomer(customer));
 
@@ -104,4 +118,6 @@ async function runFullReindex(): Promise<void> {
       await saveAnonymisedCustomers(anonymisedCustomers.splice(0, len));
     }
   }
+
+  await changeStream.close();
 })();
