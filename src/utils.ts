@@ -3,17 +3,6 @@ import { Customer } from "./interfaces";
 import { WithId } from "mongodb";
 import Hashids from "hashids";
 
-function randomInt(max: number, min = 0) {
-  const minInt = Math.ceil(min);
-  const maxInt = Math.floor(max);
-
-  return Math.floor(Math.random() * (maxInt - minInt)) + minInt;
-}
-
-function randomIntInclusive(max: number, min = 0) {
-  return randomInt(max + 1, min);
-}
-
 function createRandomCustomer(): Customer {
   return {
     firstName: faker.person.firstName(),
@@ -31,10 +20,8 @@ function createRandomCustomer(): Customer {
   };
 }
 
-export function createRandomCustomers(): Customer[] {
-  return faker.helpers.multiple(createRandomCustomer, {
-    count: randomIntInclusive(10, 1),
-  });
+export function createRandomCustomers(max: number, min = 1): Customer[] {
+  return faker.helpers.multiple(createRandomCustomer, { count: { max, min } });
 }
 
 function anonymiseString(value: string): string {

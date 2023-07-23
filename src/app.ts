@@ -7,7 +7,7 @@ async function onTick(): Promise<void> {
   await mongoClient
     .db("fundraiseup")
     .collection("customers")
-    .insertMany(createRandomCustomers());
+    .insertMany(createRandomCustomers(10));
 }
 
 (async (): Promise<void> => {
